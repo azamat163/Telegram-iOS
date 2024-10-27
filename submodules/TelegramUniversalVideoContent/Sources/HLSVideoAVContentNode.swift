@@ -59,8 +59,9 @@ final class HLSVideoAVContentNode: ASDisplayNode, UniversalVideoContentNode {
     
     private let imageNode: TransformImageNode
     
-    private var playerItem: AVPlayerItem?
-    private var player: AVPlayer?
+    private var player: CustomHLSPlayer?
+    private var playerItem: CustomHLSPlayerItem?
+    private var playerLayer: CustomHLSPlayerLayer?
     private let playerNode: ASDisplayNode
     
     private var loadProgressDisposable: Disposable?
@@ -107,8 +108,8 @@ final class HLSVideoAVContentNode: ASDisplayNode, UniversalVideoContentNode {
         
         self.imageNode = TransformImageNode()
         
-        var player: AVPlayer?
-        player = AVPlayer(playerItem: nil)
+        var player: CustomHLSPlayer?
+        player = CustomHLSPlayer()
         self.player = player
         if #available(iOS 16.0, *) {
             player?.defaultRate = Float(baseRate)
@@ -119,7 +120,7 @@ final class HLSVideoAVContentNode: ASDisplayNode, UniversalVideoContentNode {
         
         self.playerNode = ASDisplayNode()
         self.playerNode.setLayerBlock({
-            return AVPlayerLayer(player: player)
+            return CustomHLSPlayerLayer(player: player)
         })
         
         self.intrinsicDimensions = fileReference.media.dimensions?.cgSize ?? CGSize(width: 480.0, height: 320.0)
@@ -166,12 +167,12 @@ final class HLSVideoAVContentNode: ASDisplayNode, UniversalVideoContentNode {
                         return
                     }
                     
-                    let playerItem: AVPlayerItem
+                    let playerItem: CustomHLSPlayerItem
                     let assetUrl = "http://127.0.0.1:\(SharedHLSServer.shared.port)/\(playerSource.id)/master.m3u8"
                     #if DEBUG
                     print("HLSVideoAVContentNode: playing \(assetUrl)")
                     #endif
-                    playerItem = AVPlayerItem(url: URL(string: assetUrl)!)
+                    playerItem = CustomHLSPlayerItem(url: URL(string: assetUrl)!)
                     
                     if #available(iOS 14.0, *) {
                         playerItem.startsOnFirstEligibleVariant = true
@@ -183,7 +184,7 @@ final class HLSVideoAVContentNode: ASDisplayNode, UniversalVideoContentNode {
         }
         
         self.didBecomeActiveObserver = NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil, using: { [weak self] _ in
-            guard let strongSelf = self, let layer = strongSelf.playerNode.layer as? AVPlayerLayer else {
+            guard let strongSelf = self, let layer = strongSelf.playerNode.layer as? CustomHLSPlayerLayer else {
                 return
             }
             layer.player = strongSelf.player
@@ -228,7 +229,7 @@ final class HLSVideoAVContentNode: ASDisplayNode, UniversalVideoContentNode {
         self.statusTimer?.invalidate()
     }
     
-    private func setPlayerItem(_ item: AVPlayerItem?) {
+    private func setPlayerItem(_ item: CustomHLSPlayerItem?) {
         if let playerItem = self.playerItem {
             playerItem.removeObserver(self, forKeyPath: "playbackBufferEmpty")
             playerItem.removeObserver(self, forKeyPath: "playbackLikelyToKeepUp")
@@ -273,7 +274,7 @@ final class HLSVideoAVContentNode: ASDisplayNode, UniversalVideoContentNode {
                     if let event {
                         let _ = event
 #if DEBUG
-                        print("Player Error: \(event.errorComment ?? "<no comment>")")
+                        print("Player Error: \(event.errorComment)")
 #endif
                     }
                 }
@@ -294,7 +295,9 @@ final class HLSVideoAVContentNode: ASDisplayNode, UniversalVideoContentNode {
             })
         }
         
-        self.player?.replaceCurrentItem(with: self.playerItem)
+        self.player?.replaceCurrentItem(with: self.playerItem, completion: { flag in
+            guard flag else { return }
+        })
     }
     
     private func updateStatus() {
